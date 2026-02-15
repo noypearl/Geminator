@@ -1,0 +1,466 @@
+// ── Globals ──
+let autoCopy = false;
+
+// ── Init ──
+document.addEventListener('DOMContentLoaded', async () => {
+  // Load saved settings
+  const stored = await chrome.storage.local.get(['autoCopy']);
+  if (stored.autoCopy) {
+    autoCopy = true;
+    document.getElementById('autoCopyToggle').checked = true;
+  }
+
+  // Tab switching
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
+    });
+  });
+
+  // Info panel toggle
+  document.getElementById('infoBtn').addEventListener('click', () => {
+    const infoPanel = document.getElementById('infoPanel');
+    const settingsPanel = document.getElementById('settingsPanel');
+    // Close settings if open
+    if (settingsPanel.classList.contains('visible')) settingsPanel.classList.remove('visible');
+    infoPanel.classList.toggle('visible');
+  });
+
+  // Settings panel toggle
+  document.getElementById('settingsBtn').addEventListener('click', () => {
+    const settingsPanel = document.getElementById('settingsPanel');
+    const infoPanel = document.getElementById('infoPanel');
+    // Close info if open
+    if (infoPanel.classList.contains('visible')) infoPanel.classList.remove('visible');
+    settingsPanel.classList.toggle('visible');
+  });
+
+  // Auto-copy toggle
+  document.getElementById('autoCopyToggle').addEventListener('change', async (e) => {
+    autoCopy = e.target.checked;
+    await chrome.storage.local.set({ autoCopy });
+  });
+
+  // Generate buttons
+  document.getElementById('generateTextBtn').addEventListener('click', generateText);
+  document.getElementById('translateBtn').addEventListener('click', translateText);
+  document.getElementById('summarizeBtn').addEventListener('click', summarizePage);
+  document.getElementById('qaBtn').addEventListener('click', askAboutPage);
+
+  // Swap languages
+  document.getElementById('swapLangsBtn').addEventListener('click', () => {
+    const btn = document.getElementById('swapLangsBtn');
+    const src = document.getElementById('sourceLang');
+    const tgt = document.getElementById('targetLang');
+    const tmp = src.value;
+    src.value = tgt.value;
+    tgt.value = tmp;
+    // Spin the swap icon
+    const svg = btn.querySelector('svg');
+    svg.style.transform = 'rotate(180deg)';
+    setTimeout(() => { svg.style.transform = ''; }, 350);
+  });
+
+  // Copy buttons
+  document.getElementById('copyTextBtn').addEventListener('click', copyText);
+  document.getElementById('copyTranslateBtn').addEventListener('click', copyTranslation);
+  document.getElementById('copyTldrBtn').addEventListener('click', () => copyFromElement('tldrResult', 'copyTldrBtn'));
+  document.getElementById('copyQaBtn').addEventListener('click', () => copyFromElement('qaResult', 'copyQaBtn'));
+});
+
+// ── Helpers ──
+function setStatus(id, msg) {
+  const el = document.getElementById(id);
+  if (msg && msg !== 'Done!') {
+    el.innerHTML = msg + '<span class="loading-dots"><span></span><span></span><span></span></span>';
+  } else {
+    el.textContent = msg;
+  }
+}
+
+function showResult(areaId) {
+  document.getElementById(areaId).classList.add('visible');
+}
+
+function setBtnLoading(btn, loading) {
+  if (loading) {
+    btn.classList.add('loading');
+    btn.disabled = true;
+  } else {
+    btn.classList.remove('loading');
+    btn.disabled = false;
+  }
+}
+
+async function autoCopyResult(text) {
+  if (!autoCopy || !text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch (e) {
+    console.error('Auto-copy failed:', e);
+  }
+}
+
+function flashCopied(btn) {
+  btn.classList.add('copied');
+  const originalHTML = btn.innerHTML;
+  btn.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg> Copied!';
+  setTimeout(() => {
+    btn.classList.remove('copied');
+    btn.innerHTML = originalHTML;
+  }, 1500);
+}
+
+// ── Text Generation ──
+async function generateText() {
+  const prompt = document.getElementById('textPrompt').value.trim();
+  const status = 'textStatus';
+  const resultDiv = document.getElementById('textResult');
+  const btn = document.getElementById('generateTextBtn');
+
+  if (!prompt) {
+    setStatus(status, 'Please enter a prompt.');
+    return;
+  }
+
+  setBtnLoading(btn, true);
+  resultDiv.textContent = '';
+  document.getElementById('textResultArea').classList.remove('visible');
+  setStatus(status, 'Checking API...');
+
+  try {
+    if (typeof LanguageModel === 'undefined') {
+      throw new Error('Chrome built-in AI is not available. Please enable the required flags in chrome://flags.');
+    }
+
+    setStatus(status, 'Checking model availability...');
+    const availability = await LanguageModel.availability();
+
+    if (availability === 'unavailable') {
+      throw new Error('Built-in model unavailable. Please check chrome://flags for Prompt API.');
+    }
+
+    setStatus(status, 'Creating session...');
+    const session = await LanguageModel.create({
+      monitor(m) {
+        m.addEventListener('downloadprogress', (e) => {
+          setStatus(status, `Downloading model... ${Math.round(e.loaded / e.total * 100)}%`);
+        });
+      }
+    });
+
+    setStatus(status, 'Generating response...');
+
+    const result = await session.prompt(prompt);
+    resultDiv.textContent = result;
+    showResult('textResultArea');
+    setStatus(status, 'Done!');
+    await autoCopyResult(result);
+    session.destroy();
+  } catch (e) {
+    setStatus(status, 'Error occurred.');
+    resultDiv.textContent = e.message;
+    showResult('textResultArea');
+    console.error('Text generation error:', e);
+  } finally {
+    setBtnLoading(btn, false);
+  }
+}
+
+// ── Translation ──
+const LANG_NAMES = {
+  en: 'English', es: 'Spanish', fr: 'French', de: 'German', it: 'Italian',
+  pt: 'Portuguese', nl: 'Dutch', ru: 'Russian', ja: 'Japanese', ko: 'Korean',
+  zh: 'Chinese', ar: 'Arabic', hi: 'Hindi', tr: 'Turkish', pl: 'Polish',
+  vi: 'Vietnamese', th: 'Thai', id: 'Indonesian', uk: 'Ukrainian', he: 'Hebrew'
+};
+
+async function translateText() {
+  const input = document.getElementById('translateInput').value.trim();
+  const sourceLang = document.getElementById('sourceLang').value;
+  const targetLang = document.getElementById('targetLang').value;
+  const status = 'translateStatus';
+  const resultDiv = document.getElementById('translateResult');
+  const btn = document.getElementById('translateBtn');
+
+  if (!input) {
+    setStatus(status, 'Please enter text to translate.');
+    return;
+  }
+
+  if (sourceLang === targetLang) {
+    setStatus(status, 'Source and target languages must be different.');
+    return;
+  }
+
+  setBtnLoading(btn, true);
+  resultDiv.textContent = '';
+  document.getElementById('translateResultArea').classList.remove('visible');
+  setStatus(status, 'Translating...');
+
+  try {
+    // Try Chrome built-in Translator API first (Chrome 138+)
+    if (typeof Translator !== 'undefined') {
+      setStatus(status, 'Using built-in translator...');
+
+      const translator = await Translator.create({
+        sourceLanguage: sourceLang,
+        targetLanguage: targetLang,
+        monitor(m) {
+          m.addEventListener('downloadprogress', (e) => {
+            setStatus(status, `Downloading language pack... ${Math.round(e.loaded / e.total * 100)}%`);
+          });
+        }
+      });
+
+      const result = await translator.translate(input);
+      resultDiv.textContent = result;
+      showResult('translateResultArea');
+      setStatus(status, 'Done!');
+      await autoCopyResult(result);
+      translator.destroy();
+      return;
+    }
+
+    // Fallback: use LanguageModel (Prompt API) for translation
+    if (typeof LanguageModel !== 'undefined') {
+      setStatus(status, 'Using AI model for translation...');
+      const availability = await LanguageModel.availability();
+
+      if (availability !== 'unavailable') {
+        const session = await LanguageModel.create({
+          monitor(m) {
+            m.addEventListener('downloadprogress', (e) => {
+              setStatus(status, `Downloading model... ${Math.round(e.loaded / e.total * 100)}%`);
+            });
+          }
+        });
+
+        const prompt = `Translate the following text from ${LANG_NAMES[sourceLang]} to ${LANG_NAMES[targetLang]}. Only output the translation, nothing else:\n\n${input}`;
+        const result = await session.prompt(prompt);
+        resultDiv.textContent = result;
+        showResult('translateResultArea');
+        setStatus(status, 'Done!');
+        await autoCopyResult(result);
+        session.destroy();
+        return;
+      }
+    }
+
+    throw new Error('Chrome built-in AI is not available. Please enable the required flags in chrome://flags.');
+  } catch (e) {
+    setStatus(status, 'Error occurred.');
+    resultDiv.textContent = e.message;
+    showResult('translateResultArea');
+    console.error('Translation error:', e);
+  } finally {
+    setBtnLoading(btn, false);
+  }
+}
+
+// ── Copy Functions ──
+async function copyTranslation() {
+  const text = document.getElementById('translateResult').textContent;
+  if (!text) return;
+
+  try {
+    await navigator.clipboard.writeText(text);
+    flashCopied(document.getElementById('copyTranslateBtn'));
+  } catch (e) {
+    console.error('Copy failed:', e);
+  }
+}
+
+async function copyText() {
+  const text = document.getElementById('textResult').textContent;
+  if (!text) return;
+
+  try {
+    await navigator.clipboard.writeText(text);
+    flashCopied(document.getElementById('copyTextBtn'));
+  } catch (e) {
+    console.error('Copy failed:', e);
+  }
+}
+
+async function copyFromElement(resultId, btnId) {
+  const text = document.getElementById(resultId).textContent;
+  if (!text) return;
+
+  try {
+    await navigator.clipboard.writeText(text);
+    flashCopied(document.getElementById(btnId));
+  } catch (e) {
+    console.error('Copy failed:', e);
+  }
+}
+
+// ── TL;DR: Page content extraction ──
+let pageContent = '';
+
+async function getPageContent() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab?.id) throw new Error('No active tab found.');
+
+  document.getElementById('pageTitle').textContent = tab.title || 'Untitled page';
+
+  if (!chrome.scripting) {
+    throw new Error('Scripting API unavailable. Please go to chrome://extensions, remove and re-add the extension, then try again.');
+  }
+
+  const results = await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    func: () => {
+      const clone = document.cloneNode(true);
+      clone.querySelectorAll('script, style, noscript, iframe, svg, nav, footer, header').forEach(el => el.remove());
+      return clone.body?.innerText?.trim() || '';
+    }
+  });
+
+  const text = results?.[0]?.result;
+  if (!text) throw new Error('Could not extract page content. The page may be restricted.');
+
+  // Truncate to ~8000 chars to stay within model limits
+  return text.length > 8000 ? text.substring(0, 8000) + '...' : text;
+}
+
+// ── TL;DR: Summarize ──
+async function summarizePage() {
+  const status = 'tldrStatus';
+  const resultDiv = document.getElementById('tldrResult');
+  const btn = document.getElementById('summarizeBtn');
+
+  setBtnLoading(btn, true);
+  resultDiv.textContent = '';
+  document.getElementById('tldrResultArea').classList.remove('visible');
+  setStatus(status, 'Reading page content...');
+
+  try {
+    pageContent = await getPageContent();
+    setStatus(status, 'Summarizing...');
+
+    // Try Chrome built-in Summarizer API first (Chrome 138+)
+    if (typeof Summarizer !== 'undefined') {
+      const summarizer = await Summarizer.create({
+        type: 'key-points',
+        length: 'medium',
+        monitor(m) {
+          m.addEventListener('downloadprogress', (e) => {
+            setStatus(status, `Downloading summarizer... ${Math.round(e.loaded / e.total * 100)}%`);
+          });
+        }
+      });
+
+      const summary = await summarizer.summarize(pageContent);
+      resultDiv.textContent = summary;
+      showResult('tldrResultArea');
+      setStatus(status, 'Done!');
+      await autoCopyResult(summary);
+      summarizer.destroy();
+      return;
+    }
+
+    // Fallback: use LanguageModel (Prompt API)
+    if (typeof LanguageModel !== 'undefined') {
+      const availability = await LanguageModel.availability();
+
+      if (availability !== 'unavailable') {
+        setStatus(status, 'Using AI model to summarize...');
+        const session = await LanguageModel.create({
+          monitor(m) {
+            m.addEventListener('downloadprogress', (e) => {
+              setStatus(status, `Downloading model... ${Math.round(e.loaded / e.total * 100)}%`);
+            });
+          }
+        });
+
+        const prompt = `Provide a concise TL;DR summary of the following web page content. Use bullet points for key points:\n\n${pageContent}`;
+        const summary = await session.prompt(prompt);
+        resultDiv.textContent = summary;
+        showResult('tldrResultArea');
+        setStatus(status, 'Done!');
+        await autoCopyResult(summary);
+        session.destroy();
+        return;
+      }
+    }
+
+    throw new Error('Chrome built-in AI is not available. Please enable the required flags in chrome://flags.');
+  } catch (e) {
+    setStatus(status, 'Error occurred.');
+    resultDiv.textContent = e.message;
+    showResult('tldrResultArea');
+    console.error('Summarize error:', e);
+  } finally {
+    setBtnLoading(btn, false);
+  }
+}
+
+// ── TL;DR: Ask about page ──
+async function askAboutPage() {
+  const question = document.getElementById('qaInput').value.trim();
+  const status = 'qaStatus';
+  const resultDiv = document.getElementById('qaResult');
+  const btn = document.getElementById('qaBtn');
+
+  if (!question) {
+    setStatus(status, 'Please enter a question.');
+    return;
+  }
+
+  setBtnLoading(btn, true);
+
+  if (!pageContent) {
+    try {
+      setStatus(status, 'Reading page content...');
+      pageContent = await getPageContent();
+    } catch (e) {
+      setStatus(status, 'Could not read page.');
+      resultDiv.textContent = e.message;
+      showResult('qaResultArea');
+      setBtnLoading(btn, false);
+      return;
+    }
+  }
+  resultDiv.textContent = '';
+  document.getElementById('qaResultArea').classList.remove('visible');
+  setStatus(status, 'Thinking...');
+
+  try {
+    if (typeof LanguageModel === 'undefined') {
+      throw new Error('Chrome built-in AI is not available. Please enable the required flags in chrome://flags.');
+    }
+
+    const availability = await LanguageModel.availability();
+
+    if (availability === 'unavailable') {
+      throw new Error('Built-in model unavailable. Please check chrome://flags for Prompt API.');
+    }
+
+    const session = await LanguageModel.create({
+      monitor(m) {
+        m.addEventListener('downloadprogress', (e) => {
+          setStatus(status, `Downloading model... ${Math.round(e.loaded / e.total * 100)}%`);
+        });
+      }
+    });
+
+    const prompt = `Based on the following web page content, answer the user's question concisely.\n\nPage content:\n${pageContent}\n\nQuestion: ${question}`;
+    const answer = await session.prompt(prompt);
+    resultDiv.textContent = answer;
+    showResult('qaResultArea');
+    setStatus(status, 'Done!');
+    await autoCopyResult(answer);
+    session.destroy();
+  } catch (e) {
+    setStatus(status, 'Error occurred.');
+    resultDiv.textContent = e.message;
+    showResult('qaResultArea');
+    console.error('Q&A error:', e);
+  } finally {
+    setBtnLoading(btn, false);
+  }
+}
