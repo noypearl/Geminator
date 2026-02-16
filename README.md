@@ -65,7 +65,7 @@ After summarizing, ask follow-up questions about the page content directly in th
 
 1. Clone this repository:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/geminator.git
+   git clone https://github.com/noypearl/geminator.git
    ```
 2. Open Chrome and navigate to `chrome://extensions/`
 3. Enable **Developer mode** (top-right toggle)
