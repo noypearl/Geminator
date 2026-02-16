@@ -4,10 +4,17 @@ let autoCopy = false;
 // ── Init ──
 document.addEventListener('DOMContentLoaded', async () => {
   // Load saved settings
-  const stored = await chrome.storage.local.get(['autoCopy']);
+  const stored = await chrome.storage.local.get(['autoCopy', 'defaultSourceLang', 'defaultTargetLang']);
   if (stored.autoCopy) {
     autoCopy = true;
     document.getElementById('autoCopyToggle').checked = true;
+  }
+  // Restore default languages
+  if (stored.defaultSourceLang) {
+    document.getElementById('sourceLang').value = stored.defaultSourceLang;
+  }
+  if (stored.defaultTargetLang) {
+    document.getElementById('targetLang').value = stored.defaultTargetLang;
   }
 
   // Tab switching
@@ -195,6 +202,9 @@ async function translateText() {
     setStatus(status, 'Source and target languages must be different.');
     return;
   }
+
+  // Auto-save chosen languages as default
+  chrome.storage.local.set({ defaultSourceLang: sourceLang, defaultTargetLang: targetLang });
 
   setBtnLoading(btn, true);
   resultDiv.textContent = '';
