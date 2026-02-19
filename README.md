@@ -1,5 +1,4 @@
 # ✨ Geminator - Gemini + Chrome = <3
-<img width="416" height="316" alt="image" src="https://github.com/user-attachments/assets/3db298a1-4ed7-4eb2-9a8a-6666a439704e" />
 
 A straight-forward Chrome extension powered by Google's built-in AI APIs. Generate text, translate languages, summarize web pages, and ask questions about any page — all from a beautiful dark-themed popup. 
 ### No API keys needed.
@@ -16,7 +15,8 @@ A straight-forward Chrome extension powered by Google's built-in AI APIs. Genera
 ### 📝 Text Generator
 Generate text responses using Chrome's built-in **LanguageModel** (Gemini Nano). Just type a prompt and get an instant response — completely local and free.
 
-<img width="416" height="600" alt="image" src="https://github.com/user-attachments/assets/7495c113-1050-4a2d-8a33-8d68d4d044c4" />
+<img width="640" height="400" alt="Text Generator Tab" src="https://github.com/user-attachments/assets/22270dfd-9dc0-45ac-a934-db2915abd8a3" />
+
 
 ### 🌐 Translator
 Translate text between **20 languages** using Chrome's built-in AI:
@@ -25,21 +25,26 @@ Translate text between **20 languages** using Chrome's built-in AI:
 
 Supported languages: English, Spanish, French, German, Italian, Portuguese, Dutch, Russian, Japanese, Korean, Chinese, Arabic, Hindi, Turkish, Polish, Vietnamese, Thai, Indonesian, Ukrainian, and Hebrew.
 
-<img width="416" height="496" alt="Screenshot 2026-02-16 at 1 04 09" src="https://github.com/user-attachments/assets/4899b5b0-ece5-48bd-a964-bed94db540b8" />
+<img width="640" height="400" alt="Translator Tab" src="https://github.com/user-attachments/assets/582cabd2-45a4-4165-8821-f2b7997dbe80" />
 
 
 ### ⚡ TL;DR — Page Summarizer
-Summarize any web page with one click:
-1. Chrome built-in **Summarizer API** (native)
-2. Chrome **LanguageModel** fallback
+Summarize any web page with one click.
+Before clicking the button:
+<img width="640" height="400" alt="TL;DR image" src="https://github.com/user-attachments/assets/ea911bd9-ea3a-4dc2-9b9f-46e8415c98f0" />
+<br><br>
+After:
+<br><br>
+<img width="640" height="400" alt="TL;DR result example" src="https://github.com/user-attachments/assets/9b50fa5b-ec30-483b-b526-8314e48a5698" />
 
-<img width="418" height="350" alt="image" src="https://github.com/user-attachments/assets/129c7305-6008-46e4-ad89-24cc2cd3c4c1" />
 
 
-After summarizing, ask follow-up questions about the page content directly in the extension.
+After summarizing, you can ask follow-up questions about the page content directly in the extension.
 
-### 🖼️ Image Generator
-*Coming soon* — Will be available when a free image generation API is released by Google.
+### 🪄 Optimizer
+built-in Prompt Architect analyzes your raw prompts, critiques their structure, and automatically transforms them into professional-grade instructions with expert personas and clear constraints.
+
+<img width="640" height="400" alt="Optimizer Tab" src="https://github.com/user-attachments/assets/7bef2a4c-f38b-4cd4-ad2c-60c3e967215f" />
 
 ---
 
@@ -88,6 +93,7 @@ After summarizing, ask follow-up questions about the page content directly in th
 
 ```
 geminator/
+├── icons/           # Icons for extension  
 ├── manifest.json    # Chrome extension manifest (MV3)
 ├── popup.html       # UI layout and styles
 ├── popup.js         # All extension logic
