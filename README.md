@@ -10,6 +10,8 @@ A straight-forward Chrome extension powered by Google's built-in AI APIs. Genera
 
 ---
 
+### 😱😱😱 Now in the official [Chrome Web Store](https://chromewebstore.google.com/detail/geminator/hpkmeednjmnkioilodiiblpldcmobllc?authuser=0&hl=en-GB)
+
 ## 🚀 Features
 
 ### 📝 Text Generator
@@ -19,9 +21,7 @@ Generate text responses using Chrome's built-in **LanguageModel** (Gemini Nano).
 
 
 ### 🌐 Translator
-Translate text between **20 languages** using Chrome's built-in AI:
-1. Chrome built-in **Translator API** (native)
-2. Chrome **LanguageModel** (Prompt API) fallback
+Translate text between **20 languages** using Chrome's built-in Translator API 
 
 Supported languages: English, Spanish, French, German, Italian, Portuguese, Dutch, Russian, Japanese, Korean, Chinese, Arabic, Hindi, Turkish, Polish, Vietnamese, Thai, Indonesian, Ukrainian, and Hebrew.
 
