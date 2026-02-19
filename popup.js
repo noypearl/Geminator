@@ -76,6 +76,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('copyTranslateBtn').addEventListener('click', copyTranslation);
   document.getElementById('copyTldrBtn').addEventListener('click', () => copyFromElement('tldrResult', 'copyTldrBtn'));
   document.getElementById('copyQaBtn').addEventListener('click', () => copyFromElement('qaResult', 'copyQaBtn'));
+
+  // Optimizer buttons
+  document.getElementById('optimizeBtn').addEventListener('click', optimizePrompt);
+  document.getElementById('copyOptimizerBtn').addEventListener('click', () => copyFromElement('optimizerResult', 'copyOptimizerBtn'));
+  document.getElementById('critiqueToggleBtn').addEventListener('click', () => {
+    document.getElementById('critiqueSection').classList.toggle('visible');
+  });
 });
 
 // ── Helpers ──
@@ -152,6 +159,7 @@ async function generateText() {
 
     setStatus(status, 'Creating session...');
     const session = await LanguageModel.create({
+      expectedOutputLanguages: ['en'],
       monitor(m) {
         m.addEventListener('downloadprogress', (e) => {
           setStatus(status, `Downloading model... ${Math.round(e.loaded / e.total * 100)}%`);
@@ -357,6 +365,7 @@ async function summarizePage() {
       const summarizer = await Summarizer.create({
         type: 'key-points',
         length: 'medium',
+        outputLanguage: 'en',
         monitor(m) {
           m.addEventListener('downloadprogress', (e) => {
             setStatus(status, `Downloading summarizer... ${Math.round(e.loaded / e.total * 100)}%`);
@@ -380,6 +389,7 @@ async function summarizePage() {
       if (availability !== 'unavailable') {
         setStatus(status, 'Using AI model to summarize...');
         const session = await LanguageModel.create({
+          expectedOutputLanguages: ['en'],
           monitor(m) {
             m.addEventListener('downloadprogress', (e) => {
               setStatus(status, `Downloading model... ${Math.round(e.loaded / e.total * 100)}%`);
@@ -404,6 +414,132 @@ async function summarizePage() {
     resultDiv.textContent = e.message;
     showResult('tldrResultArea');
     console.error('Summarize error:', e);
+  } finally {
+    setBtnLoading(btn, false);
+  }
+}
+
+// ── Optimizer ──
+const OPTIMIZER_INITIAL_PROMPT = `You are an expert Prompt Engineer specializing in LLM optimization and template architecture. Your task is to analyze, critique, and transform the user-provided prompt into a high-performing, reusable template.
+
+### Instructions:
+1. **Analyze:** Evaluate the original prompt for clarity, persona, constraints, and data separation.
+2. **Re-Architect:** Build a superior version using professional prompt engineering techniques (Few-Shot examples, Persona assignment, XML delimiters, and Chain-of-Thought).
+3. **Format:** You MUST wrap your response in the following tags:
+   - wrap the analysis of the original prompt in <LOL_CRITIQUE> tags.
+   - wrap the final, improved, copy-paste ready prompt in <LOL_PROMPT> tags.
+   - wrap the list and explain the placeholders (e.g., {{DATA}}) used in the improved prompt in <LOL_TEMPLATE_VARIABLES> tags.
+
+### Structural Rules for <LOL_PROMPT>:
+- **Persona:** Start with a clear "You are a..." role.
+- **Objective:** Precise, action-oriented task statement.
+- **Constraints:** Clear "Do/Do Not" boundaries.
+- **Delimiters:** Use XML-style tags within the prompt to isolate variable data.
+- **Examples:** Include 1-2 few-shot examples if the task is complex.
+- **Reasoning:** End with a "Think step-by-step" instruction.
+
+`;
+
+function parseOptimizerResponse(raw) {
+  function extractTag(text, tag) {
+    const open = `<${tag}>`;
+    const close = `</${tag}>`;
+    const start = text.indexOf(open);
+    const end = text.indexOf(close);
+    if (start === -1 || end === -1 || end <= start) return '';
+    return text.substring(start + open.length, end).trim();
+  }
+
+  const prompt = extractTag(raw, 'LOL_PROMPT');
+  const critique = extractTag(raw, 'LOL_CRITIQUE');
+  const variables = extractTag(raw, 'LOL_TEMPLATE_VARIABLES');
+
+  return {
+    prompt: prompt || raw.trim(),
+    critique: critique || 'No critique was provided.',
+    variables: variables || ''
+  };
+}
+
+async function optimizePrompt() {
+  const input = document.getElementById('optimizerInput').value.trim();
+  console.log(`input: ${input}`);
+
+  const status = 'optimizerStatus';
+  const resultDiv = document.getElementById('optimizerResult');
+  const btn = document.getElementById('optimizeBtn');
+
+  if (!input) {
+    setStatus(status, 'Please enter a prompt to optimize.');
+    return;
+  }
+
+  setBtnLoading(btn, true);
+  resultDiv.textContent = '';
+  document.getElementById('optimizerResultArea').classList.remove('visible');
+  document.getElementById('critiqueSection').classList.remove('visible');
+  document.getElementById('variablesSection').classList.remove('visible');
+  setStatus(status, 'Checking API...');
+
+  try {
+    if (typeof LanguageModel === 'undefined') {
+      throw new Error('Chrome built-in AI is not available. Please enable the required flags in chrome://flags.');
+    }
+
+    setStatus(status, 'Checking model availability...');
+    const availability = await LanguageModel.availability();
+
+    if (availability === 'unavailable') {
+      throw new Error('Built-in model unavailable. Please check chrome://flags for Prompt API.');
+    }
+
+    setStatus(status, 'Creating session...');
+    const session = await LanguageModel.create({
+      expectedOutputLanguages: ['en'],
+      monitor(m) {
+        m.addEventListener('downloadprogress', (e) => {
+          setStatus(status, `Downloading model... ${Math.round(e.loaded / e.total * 100)}%`);
+        });
+      }
+    });
+
+    setStatus(status, 'Optimizing prompt...');
+    const raw = await session.prompt(`${OPTIMIZER_INITIAL_PROMPT}\n\nPROMPT TO OPTIMIZE: ${input}`);
+    console.log(`raw prompt: ${raw}`);
+    const parsed = parseOptimizerResponse(raw);
+
+    // Display improved prompt
+    resultDiv.textContent = parsed.prompt;
+
+    showResult('optimizerResultArea');
+
+    // Display critique
+    document.getElementById('critiqueResult').textContent = parsed.critique;
+
+    // Display variables
+    const variablesBody = document.getElementById('variablesResult');
+    variablesBody.innerHTML = '';
+    if (parsed.variables) {
+      const lines = parsed.variables.split('\n').map(l => l.trim()).filter(Boolean);
+      if (lines.length > 0) {
+        lines.forEach(line => {
+          const tag = document.createElement('span');
+          tag.className = 'var-tag';
+          tag.textContent = line;
+          variablesBody.appendChild(tag);
+        });
+        document.getElementById('variablesSection').classList.add('visible');
+      }
+    }
+
+    setStatus(status, 'Done!');
+    await autoCopyResult(parsed.prompt);
+    session.destroy();
+  } catch (e) {
+    setStatus(status, 'Error occurred.');
+    resultDiv.textContent = e.message;
+    showResult('optimizerResultArea');
+    console.error('Optimizer error:', e);
   } finally {
     setBtnLoading(btn, false);
   }
@@ -451,6 +587,7 @@ async function askAboutPage() {
     }
 
     const session = await LanguageModel.create({
+      expectedOutputLanguages: ['en'],
       monitor(m) {
         m.addEventListener('downloadprogress', (e) => {
           setStatus(status, `Downloading model... ${Math.round(e.loaded / e.total * 100)}%`);
