@@ -442,20 +442,32 @@ const OPTIMIZER_INITIAL_PROMPT = `You are an expert Prompt Engineer specializing
 
 function parseOptimizerResponse(raw) {
   function extractTag(text, tag) {
-    const open = `<${tag}>`;
-    const close = `</${tag}>`;
-    const start = text.indexOf(open);
-    const end = text.indexOf(close);
-    if (start === -1 || end === -1 || end <= start) return '';
-    return text.substring(start + open.length, end).trim();
+    // Case-insensitive search for the tag pair
+    const regex = new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`, 'i');
+    const match = text.match(regex);
+    return match ? match[1].trim() : '';
+  }
+
+  function stripTag(text, tag) {
+    const regex = new RegExp(`<${tag}>[\\s\\S]*?</${tag}>`, 'gi');
+    return text.replace(regex, '');
   }
 
   const prompt = extractTag(raw, 'LOL_PROMPT');
   const critique = extractTag(raw, 'LOL_CRITIQUE');
   const variables = extractTag(raw, 'LOL_TEMPLATE_VARIABLES');
 
+  // If no LOL_PROMPT tag was found, strip the other LOL sections from the raw
+  // response so they don't leak into the "Improved Prompt" display.
+  let fallback = raw;
+  if (!prompt) {
+    fallback = stripTag(fallback, 'LOL_CRITIQUE');
+    fallback = stripTag(fallback, 'LOL_TEMPLATE_VARIABLES');
+    fallback = fallback.trim();
+  }
+
   return {
-    prompt: prompt || raw.trim(),
+    prompt: prompt || fallback,
     critique: critique || 'No critique was provided.',
     variables: variables || ''
   };
