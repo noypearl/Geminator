@@ -42,7 +42,15 @@ After:
 After summarizing, you can ask follow-up questions about the page content directly in the extension.
 
 ### 🪄 Optimizer
-built-in Prompt Architect analyzes your raw prompts, critiques their structure, and automatically transforms them into professional-grade instructions with expert personas and clear constraints.
+Transform your raw prompts into professional-grade instructions with a built-in Prompt Architect. The Optimizer analyzes your prompts, critiques their structure, and automatically enhances them using advanced prompt engineering techniques.
+
+**Four Optimization Levels:**
+- **Simple (Level 0)** — Quick cleanup that improves clarity and removes ambiguity
+- **Standard (Level 1)** — Adds expert persona, clear constraints, and provides a brief critique of the original prompt
+- **Advanced (Level 2)** — Full structure with XML-style delimiters, template variables, and chain-of-thought reasoning
+- **Expert (Level 3)** — Maximum detail with few-shot examples, comprehensive persona assignment, and all professional techniques
+
+Each level builds upon the previous one, adding more sophisticated prompt engineering techniques. The Optimizer provides an improved prompt ready to copy-paste, along with optional critique analysis and template variable documentation for reusable prompts.
 
 <img width="640" height="400" alt="Optimizer Tab" src="https://github.com/user-attachments/assets/7bef2a4c-f38b-4cd4-ad2c-60c3e967215f" />
 

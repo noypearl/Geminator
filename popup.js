@@ -4,7 +4,7 @@ let autoCopy = false;
 // ── Init ──
 document.addEventListener('DOMContentLoaded', async () => {
   // Load saved settings
-  const stored = await chrome.storage.local.get(['autoCopy', 'defaultSourceLang', 'defaultTargetLang']);
+  const stored = await chrome.storage.local.get(['autoCopy', 'defaultSourceLang', 'defaultTargetLang', 'optimizerLevel']);
   if (stored.autoCopy) {
     autoCopy = true;
     document.getElementById('autoCopyToggle').checked = true;
@@ -15,6 +15,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   if (stored.defaultTargetLang) {
     document.getElementById('targetLang').value = stored.defaultTargetLang;
+  }
+  // Restore optimizer slider level (also updates labels + description via updateSliderUI later)
+  if (stored.optimizerLevel != null) {
+    document.getElementById('optimizerLevel').value = stored.optimizerLevel;
   }
 
   // Tab switching
@@ -83,6 +87,72 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('critiqueToggleBtn').addEventListener('click', () => {
     document.getElementById('critiqueSection').classList.toggle('visible');
   });
+
+  // Optimizer slider — highlight active label + dynamic description
+  const optimizerSlider = document.getElementById('optimizerLevel');
+  const sliderLabels = document.querySelectorAll('.slider-labels span');
+  const sliderDescText = document.getElementById('sliderDescText');
+
+  const LEVEL_DESCRIPTIONS = [
+    'Quick cleanup — improves clarity and removes ambiguity',
+    'Adds persona, constraints, and a brief critique',
+    'Full structure with template variables and reasoning steps',
+    'Maximum detail with few-shot examples and all techniques'
+  ];
+
+  const LEVEL_COLORS = [
+    { thumb: '#a8c7fa', glow: 'rgba(168, 199, 250, 0.25)', accent: '#a8c7fa' },  // pastel blue
+    { thumb: '#c2a8fa', glow: 'rgba(194, 168, 250, 0.25)', accent: '#c2a8fa' },  // pastel purple
+    { thumb: '#f2a8c7', glow: 'rgba(242, 168, 199, 0.25)', accent: '#f2a8c7' },  // pastel pink
+    { thumb: '#f5c5a3', glow: 'rgba(245, 197, 163, 0.25)', accent: '#f5c5a3' }   // pastel peach
+  ];
+
+  let currentLevel = -1;
+  const sliderGroup = document.querySelector('.optimizer-level-group');
+
+  function updateSliderUI(value) {
+    const v = parseInt(value, 10);
+    sliderLabels.forEach(lbl => {
+      lbl.classList.toggle('active', lbl.dataset.level === String(v));
+    });
+
+    // Update pastel colors
+    const colors = LEVEL_COLORS[v] || LEVEL_COLORS[0];
+    optimizerSlider.style.setProperty('--thumb-color', colors.thumb);
+    optimizerSlider.style.setProperty('--glow-color', colors.glow);
+    sliderGroup.style.setProperty('--slider-accent', colors.accent);
+
+    const desc = LEVEL_DESCRIPTIONS[v] || LEVEL_DESCRIPTIONS[1];
+    if (currentLevel !== v && currentLevel !== -1) {
+      // Fade out, swap text, fade in
+      sliderDescText.classList.add('fading');
+      setTimeout(() => {
+        sliderDescText.textContent = desc;
+        sliderDescText.classList.remove('fading');
+      }, 150);
+    } else {
+      sliderDescText.textContent = desc;
+    }
+    currentLevel = v;
+  }
+
+  optimizerSlider.addEventListener('input', (e) => {
+    updateSliderUI(e.target.value);
+    chrome.storage.local.set({ optimizerLevel: parseInt(e.target.value, 10) });
+  });
+
+  // Clicking a label jumps the slider to that level
+  sliderLabels.forEach(lbl => {
+    lbl.addEventListener('click', () => {
+      const val = lbl.dataset.level;
+      optimizerSlider.value = val;
+      updateSliderUI(val);
+      chrome.storage.local.set({ optimizerLevel: parseInt(val, 10) });
+    });
+  });
+
+  // Sync slider UI with the (possibly restored) value
+  updateSliderUI(optimizerSlider.value);
 });
 
 // ── Helpers ──
@@ -420,7 +490,51 @@ async function summarizePage() {
 }
 
 // ── Optimizer ──
-const OPTIMIZER_INITIAL_PROMPT = `You are an expert Prompt Engineer specializing in LLM optimization and template architecture. Your task is to analyze, critique, and transform the user-provided prompt into a high-performing, reusable template.
+const OPTIMIZER_PROMPTS = [
+  // Level 0 — Simple: concise rewrite, no frills
+  `You are a helpful prompt-improvement assistant. Your task is to rewrite the user's prompt so it is clearer, more specific, and better structured. Keep the improved prompt concise — do NOT add examples or lengthy instructions.
+
+Rules:
+- Fix ambiguity and vagueness.
+- Add any missing context that would help an AI understand the task.
+- Do NOT add few-shot examples.
+- Do NOT explain your changes.
+- Wrap your improved prompt in <LOL_PROMPT> tags. Output ONLY the <LOL_PROMPT> block, nothing else.
+`,
+
+  // Level 1 — Standard: adds persona, constraints, brief critique
+  `You are a prompt engineer. Analyze the user's prompt and create a clearer, better-structured version.
+
+### Instructions:
+1. Rewrite the prompt with a clear role/persona assignment (start with "You are a...").
+2. State the objective precisely and add Do/Do Not constraints where helpful.
+3. Keep the result focused — do NOT add few-shot examples or template variables.
+4. Format your response using these tags:
+   - <LOL_CRITIQUE> — a brief analysis (2-4 sentences) of the original prompt's weaknesses.
+   - <LOL_PROMPT> — the improved, copy-paste ready prompt.
+`,
+
+  // Level 2 — Advanced: adds XML delimiters, template variables, chain-of-thought
+  `You are an expert Prompt Engineer. Analyze and transform the user's prompt into a high-performing version using professional techniques.
+
+### Instructions:
+1. **Analyze:** Evaluate the original prompt for clarity, persona, constraints, and data separation.
+2. **Re-Architect:** Build an improved version with Persona assignment, clear Objective, Do/Do Not constraints, and XML-style delimiters for variable data.
+3. **Format:** You MUST wrap your response in the following tags:
+   - <LOL_CRITIQUE> — analysis of the original prompt.
+   - <LOL_PROMPT> — the improved, copy-paste ready prompt.
+   - <LOL_TEMPLATE_VARIABLES> — list and explain any placeholders (e.g., {{DATA}}) used.
+
+### Structural Rules for <LOL_PROMPT>:
+- **Persona:** Start with a clear "You are a..." role.
+- **Objective:** Precise, action-oriented task statement.
+- **Constraints:** Clear "Do/Do Not" boundaries.
+- **Delimiters:** Use XML-style tags within the prompt to isolate variable data.
+- **Reasoning:** End with a "Think step-by-step" instruction.
+`,
+
+  // Level 3 — Expert: full treatment with few-shot examples
+  `You are an expert Prompt Engineer specializing in LLM optimization and template architecture. Your task is to analyze, critique, and transform the user-provided prompt into a high-performing, reusable template.
 
 ### Instructions:
 1. **Analyze:** Evaluate the original prompt for clarity, persona, constraints, and data separation.
@@ -437,45 +551,55 @@ const OPTIMIZER_INITIAL_PROMPT = `You are an expert Prompt Engineer specializing
 - **Delimiters:** Use XML-style tags within the prompt to isolate variable data.
 - **Examples:** Include 1-2 few-shot examples if the task is complex.
 - **Reasoning:** End with a "Think step-by-step" instruction.
-
-`;
+`
+];
 
 function parseOptimizerResponse(raw) {
   function extractTag(text, tag) {
-    // Case-insensitive search for the tag pair
-    const regex = new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`, 'i');
-    const match = text.match(regex);
-    return match ? match[1].trim() : '';
+    // 1. Try matching a properly-closed tag pair first
+    const closed = new RegExp(`<${tag}>\\s*([\\s\\S]*?)\\s*</${tag}>`, 'i');
+    const m1 = text.match(closed);
+    if (m1) return m1[1].trim();
+
+    // 2. Fallback: tag is opened but never closed — grab everything from the
+    //    opening tag up to the next <LOL_ opening tag or end-of-string.
+    const open = new RegExp(`<${tag}>\\s*([\\s\\S]*?)(?=<LOL_|$)`, 'i');
+    const m2 = text.match(open);
+    return m2 ? m2[1].trim() : '';
   }
 
-  function stripTag(text, tag) {
-    const regex = new RegExp(`<${tag}>[\\s\\S]*?</${tag}>`, 'gi');
-    return text.replace(regex, '');
+  function stripAllLolTags(text) {
+    // Remove every opening and closing LOL_* tag (covers CRITIQUE, PROMPT,
+    // TEMPLATE_VARIABLES and any future ones).
+    return text.replace(/<\/?LOL_[A-Z_]*>/gi, '');
   }
 
   const prompt = extractTag(raw, 'LOL_PROMPT');
   const critique = extractTag(raw, 'LOL_CRITIQUE');
   const variables = extractTag(raw, 'LOL_TEMPLATE_VARIABLES');
 
-  // If no LOL_PROMPT tag was found, strip the other LOL sections from the raw
-  // response so they don't leak into the "Improved Prompt" display.
-  let fallback = raw;
-  if (!prompt) {
-    fallback = stripTag(fallback, 'LOL_CRITIQUE');
-    fallback = stripTag(fallback, 'LOL_TEMPLATE_VARIABLES');
-    fallback = fallback.trim();
-  }
+  // If extraction found a prompt, still strip any stray LOL tags that may
+  // have leaked inside. If nothing was extracted, clean the whole raw output.
+  let finalPrompt = prompt || stripAllLolTags(raw).trim();
+  finalPrompt = stripAllLolTags(finalPrompt).trim();
+
+  let finalCritique = critique || 'No critique was provided.';
+  finalCritique = stripAllLolTags(finalCritique).trim();
+
+  let finalVariables = variables || '';
+  finalVariables = stripAllLolTags(finalVariables).trim();
 
   return {
-    prompt: prompt || fallback,
-    critique: critique || 'No critique was provided.',
-    variables: variables || ''
+    prompt: finalPrompt,
+    critique: finalCritique,
+    variables: finalVariables
   };
 }
 
 async function optimizePrompt() {
   const input = document.getElementById('optimizerInput').value.trim();
-  console.log(`input: ${input}`);
+  const level = parseInt(document.getElementById('optimizerLevel').value, 10);
+  console.log(`input: ${input}, level: ${level}`);
 
   const status = 'optimizerStatus';
   const resultDiv = document.getElementById('optimizerResult');
@@ -515,23 +639,25 @@ async function optimizePrompt() {
       }
     });
 
+    const systemPrompt = OPTIMIZER_PROMPTS[level] || OPTIMIZER_PROMPTS[1];
     setStatus(status, 'Optimizing prompt...');
-    const raw = await session.prompt(`${OPTIMIZER_INITIAL_PROMPT}\n\nPROMPT TO OPTIMIZE: ${input}`);
+    const raw = await session.prompt(`${systemPrompt}\n\nPROMPT TO OPTIMIZE: ${input}`);
     console.log(`raw prompt: ${raw}`);
     const parsed = parseOptimizerResponse(raw);
 
     // Display improved prompt
     resultDiv.textContent = parsed.prompt;
-
     showResult('optimizerResultArea');
 
-    // Display critique
-    document.getElementById('critiqueResult').textContent = parsed.critique;
+    // Display critique (levels 1+ request it)
+    if (level >= 1) {
+      document.getElementById('critiqueResult').textContent = parsed.critique;
+    }
 
-    // Display variables
+    // Display variables (levels 2+ request them)
     const variablesBody = document.getElementById('variablesResult');
     variablesBody.innerHTML = '';
-    if (parsed.variables) {
+    if (level >= 2 && parsed.variables) {
       const lines = parsed.variables.split('\n').map(l => l.trim()).filter(Boolean);
       if (lines.length > 0) {
         lines.forEach(line => {
@@ -543,6 +669,9 @@ async function optimizePrompt() {
         document.getElementById('variablesSection').classList.add('visible');
       }
     }
+
+    // Hide the critique toggle button for Simple level (no critique requested)
+    document.getElementById('critiqueToggleBtn').style.display = level >= 1 ? '' : 'none';
 
     setStatus(status, 'Done!');
     await autoCopyResult(parsed.prompt);
